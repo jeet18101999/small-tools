@@ -1,0 +1,381 @@
+
+<style>
+  .drop-zone {
+    border: 1.5px dashed var(--color-border-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    background: var(--color-background-secondary);
+  }
+  .drop-zone.drag-over {
+    border-color: #378ADD;
+    background: #E6F1FB;
+  }
+  .drop-zone input[type=file] { display: none; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: var(--border-radius-md);
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    transition: background 0.12s;
+  }
+  .btn:hover { background: var(--color-background-secondary); }
+  .btn.primary {
+    background: #185FA5; color: #fff; border-color: #185FA5;
+  }
+  .btn.primary:hover { background: #0C447C; border-color: #0C447C; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .file-chip {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    padding: 10px 14px; margin-top: 1rem;
+  }
+  .file-icon { font-size: 22px; color: #185FA5; }
+  .file-name { font-size: 14px; font-weight: 500; flex: 1; word-break: break-all; }
+  .file-size { font-size: 12px; color: var(--color-text-secondary); }
+  .remove-btn { background: none; border: none; cursor: pointer; color: var(--color-text-secondary); font-size: 16px; padding: 2px; }
+  .progress-bar { height: 4px; border-radius: 2px; background: var(--color-background-secondary); overflow: hidden; margin: 1rem 0; }
+  .progress-fill { height: 100%; border-radius: 2px; background: #185FA5; transition: width 0.3s; width: 0%; }
+  .status { font-size: 13px; color: var(--color-text-secondary); margin-top: 6px; }
+  .success-box {
+    display: flex; align-items: center; gap: 12px;
+    background: #EAF3DE; border: 0.5px solid #3B6D11;
+    border-radius: var(--border-radius-md); padding: 12px 16px; margin-top: 1rem;
+  }
+  .error-box {
+    display: flex; align-items: center; gap: 12px;
+    background: #FCEBEB; border: 0.5px solid #A32D2D;
+    border-radius: var(--border-radius-md); padding: 12px 16px; margin-top: 1rem;
+  }
+  .options-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; align-items: center; }
+  .option-group { display: flex; flex-direction: column; gap: 4px; }
+  .option-group label { font-size: 12px; color: var(--color-text-secondary); }
+  select { padding: 6px 10px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); font-size: 13px; }
+</style>
+
+<h2 class="sr-only">Word to PDF converter — upload a .docx file to convert it to PDF</h2>
+
+<div style="padding: 1.5rem 0; max-width: 600px; margin: 0 auto;">
+  <div style="margin-bottom: 1.5rem;">
+    <p style="font-size: 14px; color: var(--color-text-secondary); margin: 0 0 1rem;">
+      Upload a <code>.docx</code> file — headings, paragraphs, bold/italic, lists, and tables are all preserved in the output PDF.
+    </p>
+
+    <div class="drop-zone" id="dropZone">
+      <i class="ti ti-file-word" style="font-size: 36px; color: #185FA5;" aria-hidden="true"></i>
+      <p style="margin: 10px 0 4px; font-size: 15px; font-weight: 500;">Drop your .docx file here</p>
+      <p style="margin: 0 0 14px; font-size: 13px; color: var(--color-text-secondary);">or click to browse</p>
+      <button class="btn" onclick="document.getElementById('fileInput').click()">
+        <i class="ti ti-upload" aria-hidden="true"></i> Choose file
+      </button>
+      <input type="file" id="fileInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    </div>
+
+    <div id="fileChip" style="display:none;" class="file-chip">
+      <i class="ti ti-file-text file-icon" aria-hidden="true"></i>
+      <div style="flex:1;">
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+      <button class="remove-btn" onclick="clearFile()" aria-label="Remove file"><i class="ti ti-x"></i></button>
+    </div>
+  </div>
+
+  <div class="options-row" id="optionsRow" style="display:none;">
+    <div class="option-group">
+      <label>Page size</label>
+      <select id="pageSize">
+        <option value="A4">A4</option>
+        <option value="Letter">Letter (US)</option>
+        <option value="Legal">Legal</option>
+      </select>
+    </div>
+    <div class="option-group">
+      <label>Orientation</label>
+      <select id="orientation">
+        <option value="portrait">Portrait</option>
+        <option value="landscape">Landscape</option>
+      </select>
+    </div>
+    <div class="option-group">
+      <label>Font size</label>
+      <select id="fontSize">
+        <option value="10">10 pt</option>
+        <option value="11">11 pt</option>
+        <option value="12" selected>12 pt</option>
+        <option value="14">14 pt</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="progressSection" style="display:none; margin-top:1rem;">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="status" id="statusText">Processing...</div>
+  </div>
+
+  <div id="successBox" class="success-box" style="display:none;">
+    <i class="ti ti-circle-check" style="font-size:22px; color:#3B6D11;" aria-hidden="true"></i>
+    <div style="flex:1;">
+      <div style="font-size:14px; font-weight:500; color:#27500A;">PDF ready</div>
+      <div style="font-size:12px; color:#3B6D11;" id="pdfInfo"></div>
+    </div>
+    <button class="btn primary" id="downloadBtn">
+      <i class="ti ti-download" aria-hidden="true"></i> Download PDF
+    </button>
+  </div>
+
+  <div id="errorBox" class="error-box" style="display:none;">
+    <i class="ti ti-alert-circle" style="font-size:22px; color:#A32D2D;" aria-hidden="true"></i>
+    <div style="font-size:13px; color:#791F1F;" id="errorMsg"></div>
+  </div>
+
+  <div style="margin-top:1.5rem; display:flex; gap:10px; align-items:center;" id="actionRow">
+    <button class="btn primary" id="convertBtn" onclick="convertToPDF()" disabled>
+      <i class="ti ti-file-type-pdf" aria-hidden="true"></i> Convert to PDF
+    </button>
+    <button class="btn" onclick="clearAll()" id="clearBtn" style="display:none;">Start over</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+let selectedFile = null;
+let pdfBlob = null;
+let pdfFilename = '';
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+dropZone.addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') fileInput.click();
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(f) {
+  const allowed = ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  const ext = f.name.split('.').pop().toLowerCase();
+  if (ext !== 'docx' && !allowed.includes(f.type)) {
+    showError('Please upload a .docx file.');
+    return;
+  }
+  selectedFile = f;
+  document.getElementById('fileName').textContent = f.name;
+  document.getElementById('fileSize').textContent = formatSize(f.size);
+  document.getElementById('fileChip').style.display = 'flex';
+  document.getElementById('optionsRow').style.display = 'flex';
+  document.getElementById('convertBtn').disabled = false;
+  document.getElementById('successBox').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  pdfBlob = null;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function clearFile() {
+  selectedFile = null;
+  fileInput.value = '';
+  document.getElementById('fileChip').style.display = 'none';
+  document.getElementById('optionsRow').style.display = 'none';
+  document.getElementById('convertBtn').disabled = true;
+  document.getElementById('successBox').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('progressSection').style.display = 'none';
+  document.getElementById('clearBtn').style.display = 'none';
+  pdfBlob = null;
+}
+
+function clearAll() { clearFile(); }
+
+function setProgress(pct, text) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('statusText').textContent = text;
+}
+
+function showError(msg) {
+  document.getElementById('progressSection').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'flex';
+  document.getElementById('errorMsg').textContent = msg;
+  document.getElementById('convertBtn').disabled = false;
+}
+
+async function convertToPDF() {
+  if (!selectedFile) return;
+  document.getElementById('convertBtn').disabled = true;
+  document.getElementById('successBox').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('progressSection').style.display = 'block';
+  setProgress(10, 'Reading document...');
+
+  try {
+    const arrayBuffer = await selectedFile.arrayBuffer();
+    setProgress(30, 'Extracting content...');
+
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    const rawText = result.value;
+
+    const htmlResult = await mammoth.convertToHtml({ arrayBuffer });
+    const htmlContent = htmlResult.value;
+
+    setProgress(60, 'Building PDF...');
+
+    const pageSize = document.getElementById('pageSize').value;
+    const orientation = document.getElementById('orientation').value;
+    const fontSize = parseInt(document.getElementById('fontSize').value);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation, unit: 'pt', format: pageSize.toLowerCase() });
+
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 56;
+    const contentW = pageW - margin * 2;
+
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString('<body>' + htmlContent + '</body>', 'text/html');
+    const elements = parsed.body.children;
+
+    let y = margin;
+
+    function addText(text, size, style, color) {
+      doc.setFontSize(size);
+      doc.setFont('helvetica', style);
+      doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(text.trim(), contentW);
+      for (const line of lines) {
+        if (y + size * 1.4 > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += size * 1.4;
+      }
+    }
+
+    function processNode(node) {
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      const text = node.textContent || '';
+      if (!text.trim() && !['hr'].includes(tag)) return;
+
+      if (tag === 'h1') { y += 6; addText(text, fontSize + 10, 'bold', [20, 20, 20]); y += 4; }
+      else if (tag === 'h2') { y += 5; addText(text, fontSize + 6, 'bold', [30, 30, 30]); y += 3; }
+      else if (tag === 'h3') { y += 4; addText(text, fontSize + 3, 'bold', [40, 40, 40]); y += 2; }
+      else if (tag === 'p') {
+        const hasBold = node.querySelector('strong, b');
+        const hasItalic = node.querySelector('em, i');
+        const style = hasBold && hasItalic ? 'bolditalic' : hasBold ? 'bold' : hasItalic ? 'italic' : 'normal';
+        y += 2;
+        addText(text, fontSize, style, [50, 50, 50]);
+        y += 4;
+      }
+      else if (tag === 'ul' || tag === 'ol') {
+        const items = node.querySelectorAll('li');
+        let idx = 1;
+        items.forEach(li => {
+          const bullet = tag === 'ol' ? `${idx++}.` : '•';
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(50, 50, 50);
+          const liText = li.textContent.trim();
+          const lines = doc.splitTextToSize(liText, contentW - 20);
+          if (y + fontSize * 1.4 > pageH - margin) { doc.addPage(); y = margin; }
+          doc.text(bullet, margin + 2, y);
+          doc.text(lines[0], margin + 18, y);
+          y += fontSize * 1.35;
+          for (let i = 1; i < lines.length; i++) {
+            if (y + fontSize * 1.4 > pageH - margin) { doc.addPage(); y = margin; }
+            doc.text(lines[i], margin + 18, y);
+            y += fontSize * 1.35;
+          }
+        });
+        y += 4;
+      }
+      else if (tag === 'table') {
+        const rows = node.querySelectorAll('tr');
+        const colW = contentW / Math.max(...[...rows].map(r => r.cells.length), 1);
+        rows.forEach((row, ri) => {
+          const cells = row.cells;
+          let rowH = fontSize * 1.6;
+          if (y + rowH > pageH - margin) { doc.addPage(); y = margin; }
+          doc.setDrawColor(180, 180, 180);
+          doc.setFillColor(ri === 0 ? 235 : 250, ri === 0 ? 240 : 250, ri === 0 ? 250 : 250);
+          doc.rect(margin, y - fontSize, contentW, rowH, ri === 0 ? 'FD' : 'D');
+          [...cells].forEach((cell, ci) => {
+            doc.setFontSize(fontSize - 1);
+            doc.setFont('helvetica', ri === 0 ? 'bold' : 'normal');
+            doc.setTextColor(30, 30, 30);
+            const cellText = doc.splitTextToSize(cell.textContent.trim(), colW - 8);
+            doc.text(cellText[0] || '', margin + ci * colW + 4, y);
+          });
+          y += rowH;
+        });
+        y += 8;
+      }
+      else if (tag === 'hr') {
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, y, pageW - margin, y);
+        y += 8;
+      }
+      else if (tag === 'blockquote') {
+        doc.setDrawColor(150, 150, 150);
+        doc.line(margin, y, margin, y + fontSize * 1.5 * Math.ceil(text.trim().split(' ').length / 12));
+        y += 2;
+        addText(text, fontSize - 1, 'italic', [100, 100, 100]);
+        y += 4;
+      }
+    }
+
+    setProgress(80, 'Rendering pages...');
+
+    if (elements.length === 0) {
+      const lines = rawText.split('\n');
+      for (const line of lines) {
+        if (line.trim()) addText(line, fontSize, 'normal', [50, 50, 50]);
+        else y += fontSize * 0.6;
+      }
+    } else {
+      for (const el of elements) processNode(el);
+    }
+
+    setProgress(95, 'Finalising...');
+
+    pdfBlob = doc.output('blob');
+    pdfFilename = selectedFile.name.replace(/\.docx$/i, '') + '.pdf';
+    const pdfSize = formatSize(pdfBlob.size);
+    const pageCount = doc.getNumberOfPages();
+
+    document.getElementById('progressSection').style.display = 'none';
+    document.getElementById('successBox').style.display = 'flex';
+    document.getElementById('pdfInfo').textContent = `${pageCount} page${pageCount > 1 ? 's' : ''} · ${pdfSize}`;
+    document.getElementById('clearBtn').style.display = 'inline-flex';
+    document.getElementById('convertBtn').disabled = false;
+
+    document.getElementById('downloadBtn').onclick = () => {
+      const url = URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url; a.download = pdfFilename; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+  } catch (err) {
+    showError('Conversion failed: ' + (err.message || 'Unknown error. Please check your file.'));
+    document.getElementById('convertBtn').disabled = false;
+  }
+}
+</script>

@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+# Build output
+build/
+dist/
+*.exe
+# Data and secrets
+*.db
+*.log
+*.pfx
+config.yaml

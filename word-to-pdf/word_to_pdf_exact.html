@@ -1,0 +1,327 @@
+
+<style>
+* { box-sizing: border-box; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.drop-zone {
+  border: 1.5px dashed var(--color-border-secondary);
+  border-radius: var(--border-radius-lg);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  background: var(--color-background-secondary);
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone.over { border-color: #378ADD; background: #E6F1FB22; }
+.file-list { margin-top: 1rem; display: flex; flex-direction: column; gap: 8px; }
+.file-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 9px 12px;
+}
+.file-row .name { flex: 1; font-size: 13px; font-weight: 500; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-row .size { font-size: 12px; color: var(--color-text-secondary); min-width: 48px; text-align: right; }
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; white-space: nowrap;
+}
+.badge.pending { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+.badge.converting { background: #E6F1FB; color: #0C447C; }
+.badge.done { background: #EAF3DE; color: #27500A; }
+.badge.error { background: #FCEBEB; color: #791F1F; }
+.icon-btn { background: none; border: none; cursor: pointer; color: var(--color-text-secondary); padding: 4px; border-radius: 4px; display: flex; align-items: center; }
+.icon-btn:hover { color: var(--color-text-primary); background: var(--color-background-secondary); }
+.dl-btn {
+  background: none; border: 0.5px solid var(--color-border-secondary);
+  border-radius: var(--border-radius-md); padding: 4px 10px;
+  font-size: 12px; cursor: pointer; color: var(--color-text-primary);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.dl-btn:hover { background: var(--color-background-secondary); }
+.primary-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 20px; border-radius: var(--border-radius-md);
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  border: none; background: #185FA5; color: #fff;
+  transition: background 0.12s;
+}
+.primary-btn:hover { background: #0C447C; }
+.primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ghost-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border-radius: var(--border-radius-md);
+  font-size: 14px; cursor: pointer;
+  border: 0.5px solid var(--color-border-secondary);
+  background: transparent; color: var(--color-text-primary);
+  transition: background 0.12s;
+}
+.ghost-btn:hover { background: var(--color-background-secondary); }
+.progress-track { height: 3px; background: var(--color-background-secondary); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.progress-bar { height: 100%; background: #185FA5; border-radius: 2px; transition: width 0.3s; }
+#preview-area { display: none; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); overflow: hidden; }
+</style>
+
+<h2 class="sr-only">Word to PDF converter — upload multiple .docx files and download them as PDFs without changing formatting</h2>
+
+<div style="padding: 1.5rem 0; max-width: 620px; margin: 0 auto;">
+
+  <div class="drop-zone" id="dropZone">
+    <i class="ti ti-cloud-upload" style="font-size: 32px; color: #378ADD;" aria-hidden="true"></i>
+    <p style="margin: 10px 0 4px; font-size: 15px; font-weight: 500; color: var(--color-text-primary);">Drop .docx files here</p>
+    <p style="margin: 0 0 14px; font-size: 13px; color: var(--color-text-secondary);">or click to browse — multiple files supported</p>
+    <button class="ghost-btn" onclick="document.getElementById('fileInput').click(); event.stopPropagation();">
+      <i class="ti ti-file-plus" aria-hidden="true"></i> Add files
+    </button>
+    <input type="file" id="fileInput" multiple accept=".docx" style="display:none;">
+  </div>
+
+  <div class="file-list" id="fileList"></div>
+
+  <div id="actionBar" style="display:none; margin-top: 1.25rem; display: none; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <button class="primary-btn" id="convertAllBtn" onclick="convertAll()">
+      <i class="ti ti-file-type-pdf" aria-hidden="true"></i> Convert all to PDF
+    </button>
+    <button class="ghost-btn" onclick="clearAll()">
+      <i class="ti ti-trash" aria-hidden="true"></i> Clear all
+    </button>
+    <span id="summaryText" style="font-size: 13px; color: var(--color-text-secondary); margin-left: auto;"></span>
+  </div>
+
+  <div id="preview-area"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.2/dist/docx-preview.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script>
+const files = [];
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileList = document.getElementById('fileList');
+const actionBar = document.getElementById('actionBar');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); addFiles(e.dataTransfer.files); });
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+
+function addFiles(newFiles) {
+  let added = 0;
+  for (const f of newFiles) {
+    if (!f.name.toLowerCase().endsWith('.docx')) continue;
+    if (files.find(x => x.file.name === f.name && x.file.size === f.size)) continue;
+    files.push({ file: f, status: 'pending', pdfBlob: null, id: Date.now() + Math.random() });
+    added++;
+  }
+  if (added) render();
+}
+
+function render() {
+  fileList.innerHTML = '';
+  if (!files.length) { actionBar.style.display = 'none'; return; }
+  actionBar.style.display = 'flex';
+
+  files.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.id = 'row-' + idx;
+
+    const icon = document.createElement('i');
+    icon.className = 'ti ti-file-word';
+    icon.style.fontSize = '18px';
+    icon.style.color = '#185FA5';
+    icon.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = item.file.name;
+    name.title = item.file.name;
+
+    const size = document.createElement('div');
+    size.className = 'size';
+    size.textContent = fmtSize(item.file.size);
+
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + item.status;
+    badge.id = 'badge-' + idx;
+    badge.textContent = item.status === 'pending' ? 'Pending' : item.status === 'converting' ? 'Converting…' : item.status === 'done' ? 'Done' : 'Error';
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '6px';
+
+    if (item.status === 'done' && item.pdfBlob) {
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'dl-btn';
+      dlBtn.innerHTML = '<i class="ti ti-download" aria-hidden="true"></i> PDF';
+      dlBtn.onclick = (e) => { e.stopPropagation(); downloadPDF(item); };
+      right.appendChild(dlBtn);
+    }
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'icon-btn';
+    removeBtn.setAttribute('aria-label', 'Remove');
+    removeBtn.innerHTML = '<i class="ti ti-x" style="font-size:15px;"></i>';
+    removeBtn.onclick = (e) => { e.stopPropagation(); files.splice(idx, 1); render(); };
+
+    right.appendChild(badge);
+    right.appendChild(removeBtn);
+
+    const prog = document.createElement('div');
+    prog.id = 'prog-' + idx;
+    prog.style.display = 'none';
+
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(size);
+    row.appendChild(right);
+
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.flex = '1';
+    wrap.style.minWidth = '0';
+    wrap.appendChild(name);
+    wrap.appendChild(size);
+
+    row.innerHTML = '';
+    row.appendChild(icon);
+    row.appendChild(wrap);
+    row.appendChild(right);
+
+    fileList.appendChild(row);
+  });
+
+  const done = files.filter(f => f.status === 'done').length;
+  const total = files.length;
+  const summary = document.getElementById('summaryText');
+  summary.textContent = done > 0 ? `${done} of ${total} converted` : `${total} file${total !== 1 ? 's' : ''} queued`;
+
+  const convertBtn = document.getElementById('convertAllBtn');
+  const allDone = files.every(f => f.status === 'done');
+  if (allDone && done > 0) {
+    convertBtn.innerHTML = '<i class="ti ti-download" aria-hidden="true"></i> Download all PDFs';
+    convertBtn.onclick = downloadAll;
+  } else {
+    convertBtn.innerHTML = '<i class="ti ti-file-type-pdf" aria-hidden="true"></i> Convert all to PDF';
+    convertBtn.onclick = convertAll;
+  }
+}
+
+function updateRow(idx) {
+  const item = files[idx];
+  if (!item) return;
+  const oldRow = document.getElementById('row-' + idx);
+  if (!oldRow) { render(); return; }
+
+  const badge = document.getElementById('badge-' + idx);
+  if (badge) {
+    badge.className = 'badge ' + item.status;
+    badge.textContent = item.status === 'pending' ? 'Pending' : item.status === 'converting' ? 'Converting…' : item.status === 'done' ? 'Done' : 'Error';
+  }
+  render();
+}
+
+async function convertFile(item, idx) {
+  item.status = 'converting';
+  updateRow(idx);
+
+  try {
+    const arrayBuffer = await item.file.arrayBuffer();
+
+    const container = document.createElement('div');
+    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px;background:#fff;';
+    document.body.appendChild(container);
+
+    await docx.renderAsync(arrayBuffer, container, null, {
+      className: 'docx-render',
+      inWrapper: false,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      ignoreFonts: false,
+      breakPages: true,
+      useBase64URL: true,
+    });
+
+    await new Promise(r => setTimeout(r, 400));
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+    const pdfW = pdf.internal.pageSize.getWidth();
+    const pdfH = pdf.internal.pageSize.getHeight();
+
+    const pages = container.querySelectorAll('.docx-wrapper > section, .docx-wrapper > article, [class*="page"]');
+    const targets = pages.length > 0 ? [...pages] : [container];
+
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgW = pdfW;
+      const imgH = (canvas.height / canvas.width) * imgW;
+
+      if (i > 0) pdf.addPage();
+
+      let yOff = 0;
+      while (yOff < imgH) {
+        if (yOff > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -yOff, imgW, imgH, undefined, 'FAST');
+        yOff += pdfH;
+      }
+    }
+
+    document.body.removeChild(container);
+    item.pdfBlob = pdf.output('blob');
+    item.status = 'done';
+  } catch (err) {
+    item.status = 'error';
+    item.error = err.message;
+    console.error(err);
+  }
+  updateRow(idx);
+}
+
+async function convertAll() {
+  const btn = document.getElementById('convertAllBtn');
+  btn.disabled = true;
+  const pending = files.map((f, i) => ({ f, i })).filter(x => x.f.status !== 'done');
+  for (const { f, i } of pending) {
+    await convertFile(f, i);
+  }
+  btn.disabled = false;
+  render();
+}
+
+function downloadPDF(item) {
+  const url = URL.createObjectURL(item.pdfBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = item.file.name.replace(/\.docx$/i, '.pdf');
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadAll() {
+  files.filter(f => f.status === 'done' && f.pdfBlob).forEach(downloadPDF);
+}
+
+function clearAll() {
+  files.length = 0;
+  render();
+}
+</script>

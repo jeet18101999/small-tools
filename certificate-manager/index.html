@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certificate Manager</title>
+<link rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+<style>
+  :root{--bg:#f4f5f7;--panel:#fff;--ink:#1f2430;--muted:#6b7280;--line:#e3e6ea;
+    --accent:#2f6df6;--accent-d:#255bd0;--ok:#0f9d58;--radius:10px}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);
+    color:var(--ink);font-size:14px}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 18px;
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .badge{font-size:11px;padding:2px 8px;border-radius:20px;background:#eef1f5;
+    color:var(--muted);border:1px solid var(--line)}
+  .badge.on{background:#e7f4ec;color:var(--ok);border-color:#cbe8d5}
+  .grow{flex:1}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  input[type=text],select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    font-size:13px;background:#fff;color:var(--ink);width:100%}
+  input:focus,select:focus{outline:2px solid #cfe0ff;border-color:var(--accent)}
+  button{cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:8px 12px;border-radius:8px;font-size:13px;font-weight:500}
+  button:hover{background:#f0f2f5}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:var(--accent-d)}
+  button.ghost{background:transparent}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.toggle.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  main{display:grid;grid-template-columns:1fr 350px;gap:16px;padding:16px;
+    height:calc(100vh - 58px)}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    display:flex;flex-direction:column;overflow:hidden}
+  .toolbar{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);
+    align-items:center;flex-wrap:wrap}
+  .canvas-wrap{flex:1;background:#20242c;display:flex;align-items:center;
+    justify-content:center;overflow:hidden;position:relative}
+  #img{max-width:100%;display:block}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#cdd4de;font-size:14px;background:rgba(32,36,44,.75);z-index:5}
+  .spinner{width:22px;height:22px;border:3px solid #4a5262;border-top-color:#9fb4ff;
+    border-radius:50%;animation:spin .8s linear infinite;margin-right:10px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty{color:#aeb6c2;text-align:center;padding:40px;line-height:1.6}
+  aside{display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px}
+  .card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--muted);font-weight:600}
+  .cats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+  .cat{padding:9px 6px;text-align:center;border-radius:8px;border:1px solid var(--line);
+    font-size:12px;font-weight:500}
+  .cat.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .preview-name{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#f7f8fa;
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;word-break:break-word}
+  .path-line{font-size:11px;color:var(--muted);margin-top:4px;word-break:break-all}
+  .queue{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+  .bar{flex:1;height:6px;background:#eceef1;border-radius:6px;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1f2430;
+    color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;
+    transition:opacity .25s;pointer-events:none;z-index:50;max-width:80vw}
+  .toast.show{opacity:1}.toast.err{background:#8a1f1f}
+  .errbox{background:#fff4f4;border:1px solid #f0c9c9;color:#8a1f1f;border-radius:8px;
+    padding:8px 10px;font-size:12px;margin-top:8px;white-space:pre-wrap;max-height:120px;overflow:auto}
+  .hidden{display:none!important}
+  small.hint{color:var(--muted);font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Certificate Manager</h1>
+  <span class="badge {{ 'on' if have_fitz else '' }}">PDF {{ 'on' if have_fitz else 'off' }}</span>
+  <span class="badge {{ 'on' if have_tess else '' }}">OCR {{ 'on' if have_tess else 'off' }}</span>
+  <span class="badge {{ 'on' if have_ai else '' }}">AI {{ 'on' if have_ai else 'off' }}</span>
+  <div class="grow"></div>
+  <div class="field" style="width:320px"><label>Destination folder</label>
+    <input type="text" id="dest" value="{{ default_dest }}"></div>
+  <div class="field" style="width:90px"><label>Save as</label>
+    <select id="format"><option value="png">PNG</option><option value="jpg">JPG</option></select></div>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="toolbar">
+      <button id="btn-add">+ Add files</button>
+      <input type="file" id="file-input" class="hidden" multiple
+        accept=".png,.jpg,.jpeg,.bmp,.webp,.tif,.tiff,.pdf,.docx,.doc">
+      <button id="btn-deskew" class="toggle" title="Perspective de-skew using detected edges">Deskew</button>
+      <span class="grow"></span>
+      <button id="btn-autocrop">Auto crop</button>
+      <button id="btn-full">Whole page</button>
+      <button id="btn-rot-l">&#8634; Rotate</button>
+      <button id="btn-rot-r">Rotate &#8635;</button>
+    </div>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <div class="empty" id="empty">
+        Drop certificates here, or click <b>Add files</b>.<br>
+        Images, PDFs and Word documents are accepted — drop as many as you like.
+      </div>
+      <img id="img" class="hidden">
+      <div class="overlay hidden" id="overlay"><span class="spinner"></span><span id="overlay-txt">Analyzing…</span></div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <div class="queue"><span id="q-label">No documents loaded</span>
+        <div class="bar"><i id="q-bar"></i></div></div>
+      <div class="path-line" id="src-line"></div>
+      <div class="errbox hidden" id="errbox"></div>
+    </div>
+
+    <div class="card">
+      <h3>Certificate details</h3>
+      <div class="cats" id="cats">
+        <div class="cat" data-cat="academic">Academic</div>
+        <div class="cat" data-cat="extracurricular">Extra&#8209;curricular</div>
+        <div class="cat" data-cat="marksheet">Mark sheet</div>
+      </div>
+      <div class="stack" style="margin-top:12px">
+        <div class="field"><label>Title (main content)</label>
+          <input type="text" id="f-title" placeholder="e.g. Machine Learning Specialization"></div>
+        <div class="field"><label>Organisation</label>
+          <input type="text" id="f-org" placeholder="e.g. Stanford University"></div>
+        <div class="field"><label>Addressed to</label>
+          <input type="text" id="f-addr" placeholder="recipient name"></div>
+        <div class="row">
+          <div class="field"><label>Year / date</label>
+            <input type="text" id="f-date" placeholder="2024"></div>
+          <div class="field" id="sem-field"><label>Semester</label>
+            <input type="text" id="f-sem" placeholder="4 or IV"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Will be saved as</h3>
+      <div class="preview-name" id="fname-preview">—</div>
+      <div class="path-line" id="folder-preview"></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button class="ghost" id="btn-skip">Skip</button>
+        <button class="primary" id="btn-save">Save &amp; next</button>
+      </div>
+      <small class="hint">Check the crop box on the left before saving. (Enter = save)</small>
+    </div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+<script>
+const CAT_FOLDER={academic:"Academic Certificates",
+  extracurricular:"Extracurricular Certificates",marksheet:"Mark Sheets"};
+const UPLOAD_BATCH=8;
+let SESSION=null, PAGES=[], idx=0, cropper=null, rot=0, variant="orig",
+    savedCount=0, category="academic";
+
+const $=s=>document.querySelector(s);
+const imgEl=$("#img"), overlay=$("#overlay");
+function toast(m,err){const t=$("#toast");t.textContent=m;
+  t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast",2400);}
+function showOverlay(txt){$("#overlay-txt").textContent=txt||"Analyzing…";overlay.classList.remove("hidden");}
+function hideOverlay(){overlay.classList.add("hidden");}
+
+/* ---------------- upload (batched, keeps one session) ---------------- */
+$("#btn-add").onclick=()=>$("#file-input").click();
+$("#file-input").onchange=e=>uploadFiles([...e.target.files]);
+const wrap=$("#canvas-wrap");
+["dragover","dragenter"].forEach(ev=>wrap.addEventListener(ev,e=>{e.preventDefault();wrap.style.opacity=.9;}));
+["dragleave","drop"].forEach(ev=>wrap.addEventListener(ev,e=>{e.preventDefault();wrap.style.opacity=1;}));
+wrap.addEventListener("drop",e=>{if(e.dataTransfer.files.length)uploadFiles([...e.dataTransfer.files]);});
+
+async function uploadFiles(list){
+  if(!list.length)return;
+  const startLen=PAGES.length;
+  let done=0;
+  showOverlay(`Uploading 0 / ${list.length}…`);
+  for(let i=0;i<list.length;i+=UPLOAD_BATCH){
+    const chunk=list.slice(i,i+UPLOAD_BATCH);
+    const fd=new FormData();
+    if(SESSION)fd.append("session",SESSION);
+    chunk.forEach(f=>fd.append("files",f));
+    try{
+      const r=await fetch("/upload",{method:"POST",body:fd});
+      const data=await r.json();
+      if(data.error){toast(data.error,true);continue;}
+      SESSION=data.session;
+      PAGES=PAGES.concat(data.pages);
+      if(data.errors&&data.errors.length){
+        const b=$("#errbox");b.classList.remove("hidden");
+        b.textContent=(b.textContent?b.textContent+"\n":"")+data.errors.join("\n");
+      }
+    }catch(err){toast("Upload failed: "+err,true);}
+    done+=chunk.length;
+    showOverlay(`Uploading ${done} / ${list.length}…`);
+    updateQueue();
+  }
+  hideOverlay();
+  if(PAGES.length && (startLen===0 || !cropper)){idx=startLen>0&&cropper?idx:0;showPage();}
+  updateQueue();
+  if(PAGES.length===0)toast("No pages found in those files.",true);
+}
+
+/* ---------------- per-page analyze (lazy + cached + prefetch) --------- */
+const analyzeCache={};
+async function analyzePage(p){
+  if(analyzeCache[p.id])return analyzeCache[p.id];
+  const r=await fetch(`/analyze/${SESSION}/${p.id}`);
+  const data=await r.json();
+  analyzeCache[p.id]=data;
+  return data;
+}
+function prefetch(i){const p=PAGES[i];if(p&&!analyzeCache[p.id])analyzePage(p).catch(()=>{});}
+
+/* ---------------- show a page ---------------- */
+async function showPage(){
+  if(idx>=PAGES.length){finished();return;}
+  const p=PAGES[idx];
+  $("#empty").classList.add("hidden");
+  imgEl.classList.remove("hidden");
+  $("#src-line").textContent="Source: "+p.source;
+  updateQueue();
+  showOverlay("Detecting edges & reading text…");
+
+  let a;
+  try{a=await analyzePage(p);}catch(e){a={meta:{},cropOrig:null,hasWarp:false,defaultVariant:"orig"};}
+  if(idx>=PAGES.length||PAGES[idx].id!==p.id)return; // user moved on
+  p.analysis=a;
+  rot=p.rot||0;
+  variant=p.variant||a.defaultVariant||"orig";
+  setDeskewButton(a.hasWarp,variant);
+
+  const m=a.meta||{};
+  setCategory(m.category||"academic");
+  $("#f-title").value=m.title||"";
+  $("#f-org").value=m.organisation||"";
+  $("#f-addr").value=m.addressed_to||"";
+  $("#f-date").value=m.date||"";
+  $("#f-sem").value=m.semester||"";
+  updatePreview();
+
+  loadImage(p);
+  prefetch(idx+1);
+}
+
+function currentCropSuggestion(p){
+  const a=p.analysis||{};
+  return variant==="warp"?(a.cropWarp||null):(a.cropOrig||null);
+}
+function loadImage(p){
+  if(cropper){cropper.destroy();cropper=null;}
+  imgEl.onload=()=>{
+    hideOverlay();
+    cropper=new Cropper(imgEl,{viewMode:1,autoCrop:true,autoCropArea:1,background:false,
+      dragMode:"crop",movable:false,zoomable:false,toggleDragModeOnDblclick:false,
+      ready(){applySuggestion(p);}});
+  };
+  imgEl.src=`/page/${SESSION}/${p.id}?variant=${variant}&rot=${rot}&t=${Date.now()}`;
+}
+function applySuggestion(p){
+  if(!cropper)return;
+  const c=currentCropSuggestion(p);
+  if(rot===0 && c) cropper.setData({x:c.x,y:c.y,width:c.width,height:c.height});
+}
+
+/* ---------------- toolbar ---------------- */
+$("#btn-autocrop").onclick=()=>{if(cropper&&PAGES[idx])applySuggestion(PAGES[idx]);};
+$("#btn-full").onclick=()=>{if(cropper){const d=cropper.getImageData();
+  cropper.setData({x:0,y:0,width:d.naturalWidth,height:d.naturalHeight});}};
+$("#btn-rot-l").onclick=()=>rotate(-90);
+$("#btn-rot-r").onclick=()=>rotate(90);
+function rotate(delta){if(idx>=PAGES.length)return;
+  rot=(rot+delta+360)%360;PAGES[idx].rot=rot;loadImage(PAGES[idx]);}
+
+const btnDeskew=$("#btn-deskew");
+btnDeskew.onclick=()=>{
+  const p=PAGES[idx];if(!p||!p.analysis||!p.analysis.hasWarp){
+    toast("No document edges were detected on this page.");return;}
+  variant=(variant==="warp")?"orig":"warp";
+  p.variant=variant;rot=0;p.rot=0;
+  setDeskewButton(true,variant);
+  loadImage(p);
+};
+function setDeskewButton(hasWarp,v){
+  btnDeskew.disabled=!hasWarp;
+  btnDeskew.classList.toggle("active",hasWarp&&v==="warp");
+  btnDeskew.textContent=hasWarp?(v==="warp"?"Deskew: on":"Deskew: off"):"No edges found";
+}
+
+/* ---------------- category / fields ---------------- */
+document.querySelectorAll(".cat").forEach(el=>el.onclick=()=>setCategory(el.dataset.cat));
+function setCategory(c){category=c;
+  document.querySelectorAll(".cat").forEach(el=>el.classList.toggle("active",el.dataset.cat===c));
+  $("#sem-field").style.display=(c==="marksheet")?"flex":"none";updatePreview();}
+["f-title","f-org","f-addr","f-date","f-sem"].forEach(id=>$("#"+id).addEventListener("input",updatePreview));
+$("#dest").addEventListener("input",updatePreview);
+$("#format").addEventListener("change",updatePreview);
+
+function clean(s){return (s||"").replace(/[<>:"/\\|?*\n\r\t]/g," ").replace(/\s+/g," ").trim();}
+function buildFilename(){
+  const ext="."+$("#format").value;
+  let parts=[clean($("#f-title").value)||"Untitled"];
+  const org=clean($("#f-org").value); if(org)parts.push(org);
+  const addr=clean($("#f-addr").value); if(addr)parts.push(addr);
+  if(category==="marksheet"&&clean($("#f-sem").value))parts.push("Sem "+clean($("#f-sem").value));
+  const date=clean($("#f-date").value); if(date)parts.push(date);
+  return parts.join(" - ")+ext;
+}
+function updatePreview(){
+  $("#fname-preview").textContent=buildFilename();
+  const dest=$("#dest").value.replace(/[\\/]+$/,"");
+  $("#folder-preview").textContent=dest+" \u203a "+CAT_FOLDER[category]+"\\";
+}
+
+/* ---------------- queue ---------------- */
+function updateQueue(){
+  const total=PAGES.length;
+  if(!total){$("#q-label").textContent="No documents loaded";$("#q-bar").style.width="0";return;}
+  $("#q-label").textContent=`Document ${Math.min(idx+1,total)} of ${total} · ${savedCount} saved`;
+  $("#q-bar").style.width=Math.round((idx/total)*100)+"%";
+}
+
+/* ---------------- save / skip ---------------- */
+$("#btn-skip").onclick=()=>{idx++;showPage();};
+$("#btn-save").onclick=save;
+async function save(){
+  if(idx>=PAGES.length||!cropper)return;
+  const data=cropper.getData(true);
+  const btn=$("#btn-save");btn.disabled=true;btn.textContent="Saving…";
+  try{
+    const r=await fetch("/save",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({session:SESSION,pageId:PAGES[idx].id,variant,rot,
+        crop:{x:data.x,y:data.y,width:data.width,height:data.height},
+        category,title:$("#f-title").value,organisation:$("#f-org").value,
+        addressed_to:$("#f-addr").value,date:$("#f-date").value,
+        semester:$("#f-sem").value,dest:$("#dest").value,format:$("#format").value})});
+    const res=await r.json();
+    if(res.error){toast(res.error,true);}
+    else{savedCount++;toast("Saved: "+res.saved.split(/[\\/]/).pop());idx++;showPage();}
+  }catch(err){toast("Save failed: "+err,true);}
+  finally{btn.disabled=false;btn.textContent="Save & next";}
+}
+
+function finished(){
+  if(cropper){cropper.destroy();cropper=null;}
+  hideOverlay();imgEl.classList.add("hidden");
+  const e=$("#empty");e.classList.remove("hidden");
+  e.innerHTML=PAGES.length
+    ?`All done — <b>${savedCount}</b> certificate(s) saved.<br>Add more files to continue.`
+    :"Drop certificates here, or click <b>Add files</b>.";
+  $("#q-bar").style.width="100%";$("#q-label").textContent=`${savedCount} saved`;
+  if(SESSION)fetch("/cleanup",{method:"POST",headers:{"content-type":"application/json"},
+    body:JSON.stringify({session:SESSION})}).catch(()=>{});
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&e.target.tagName!=="INPUT")save();});
+updatePreview();
+</script>
+</body>
+</html>
